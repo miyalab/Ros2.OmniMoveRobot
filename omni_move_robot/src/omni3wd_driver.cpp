@@ -6,6 +6,9 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <thread>
+#include <mutex>
+#include <chrono>
 #include <functional>
 
 // ROS2 library
@@ -20,6 +23,8 @@
 //-----------------------------
 // Namespace
 //-----------------------------
+
+
 /**
  * @brief Project Name
  * 
@@ -36,8 +41,12 @@ public:
 private:
     void Execute();
 	void onSubscriptionCmdRobotVel(const geometry_msgs::msg::Twist::SharedPtr msg);
-	rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmdRobotVel;
-	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr robotPose;
+	rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmdRobotVelSub;
+    geometry_msgs::msg::Twist cmdRobotVel;
+    std::mutex cmdRobotVelMutex;
+
+	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr robotPosePub;
+    std::mutex encoderMutex;
 };
 
 /**
@@ -52,9 +61,9 @@ Omni3wdRobot::Omni3wdRobot(rclcpp::NodeOptions options) : rclcpp::Node("Omni3wdD
     using std::placeholders::_2;
 
 	// create topic
-    cmdRobotVel = this->create_subscription<geometry_msgs::msg::Twist>("OmniMoveRobot/CmdRobotVel", 10,
+    cmdRobotVelSub = this->create_subscription<geometry_msgs::msg::Twist>("OmniMoveRobot/CmdRobotVel", 10,
 	 		std::bind(&Omni3wdRobot::onSubscriptionCmdRobotVel, this, _1));
-	robotPose = this->create_publisher<nav_msgs::msg::Odometry>("OmniMoveRobot/RobotPose", 10);
+	robotPosePub = this->create_publisher<nav_msgs::msg::Odometry>("OmniMoveRobot/RobotPose", 10);
 
     // create thread
     std::thread{
@@ -79,25 +88,27 @@ void Omni3wdRobot::Execute()
 {
     // serial port setting
     using namespace boost::asio;
-    io_service io;
-    serial_port serialDrive(io, "/dev/ttyACM0");
-    serialDrive.set_option(serial_port_base::baud_rate(9600));
-    serialDrive.set_option(serial_port_base::character_size(8));
-    serialDrive.set_option(serial_port_base::flow_control(serial_port_base::flow_control::none));
-    serialDrive.set_option(serial_port_base::parity(serial_port_base::parity::none));
-    serialDrive.set_option(serial_port_base::stop_bits(serial_port_base::stop_bits::one));
+    // io_service io;
+    // serial_port serialDrive(io, "/dev/ttyACM0");
+    // serialDrive.set_option(serial_port_base::baud_rate(9600));
+    // serialDrive.set_option(serial_port_base::character_size(8));
+    // serialDrive.set_option(serial_port_base::flow_control(serial_port_base::flow_control::none));
+    // serialDrive.set_option(serial_port_base::parity(serial_port_base::parity::none));
+    // serialDrive.set_option(serial_port_base::stop_bits(serial_port_base::stop_bits::one));
 
     // Main process loop setting
     rclcpp::WallRate loop(1);		// loop freq.[Hz]
 
     // Main loop
     while(rclcpp::ok()){
-        
+        cmdRobotVelMutex.lock();
+        RCLCPP_INFO(this->get_logger(), "(%.2lf, %.2lf, %.2lf)", cmdRobotVel.linear.x, cmdRobotVel.linear.y, cmdRobotVel.linear.z);
+        cmdRobotVelMutex.unlock();
         loop.sleep();
     }
 
     // close serialport
-    serialDrive.close();
+    //serialDrive.close();
 }
 
 /**
@@ -107,7 +118,9 @@ void Omni3wdRobot::Execute()
  */
 void Omni3wdRobot::onSubscriptionCmdRobotVel(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-    RCLCPP_INFO(this->get_logger(), "(%.2lf, %.2lf, %.2lf)", msg->linear.x, msg->linear.y, msg->linear.z);
+    std::lock_guard<std::mutex> lock(this->cmdRobotVelMutex);
+    cmdRobotVel = *msg;
+    //RCLCPP_INFO(this->get_logger(), "(%.2lf, %.2lf, %.2lf)", msg->linear.x, msg->linear.y, msg->linear.z);
 }
 }
 
