@@ -11,13 +11,13 @@
 #include <chrono>
 #include <functional>
 
-// ROS2 library
+// ROS2
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 
-// boost
+// Boost
 #include <boost/asio.hpp>
 
 //-----------------------------
@@ -40,13 +40,17 @@ public:
     ~Omni3wdRobot();
 private:
     void Execute();
+
+    // robot vel control
 	void onSubscriptionCmdRobotVel(const geometry_msgs::msg::Twist::SharedPtr msg);
 	rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmdRobotVelSub;
     geometry_msgs::msg::Twist cmdRobotVel;
     std::mutex cmdRobotVelMutex;
 
+    // robot pose
 	rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr robotPosePub;
-    std::mutex encoderMutex;
+    nav_msgs::msg::Odometry robotPose;
+    std::mutex robotPoseMutex;
 };
 
 /**
@@ -104,6 +108,10 @@ void Omni3wdRobot::Execute()
         cmdRobotVelMutex.lock();
         RCLCPP_INFO(this->get_logger(), "(%.2lf, %.2lf, %.2lf)", cmdRobotVel.linear.x, cmdRobotVel.linear.y, cmdRobotVel.linear.z);
         cmdRobotVelMutex.unlock();
+
+        robotPoseMutex.lock();
+        robotPosePub->publish(robotPose);
+        robotPoseMutex.unlock();
         loop.sleep();
     }
 
